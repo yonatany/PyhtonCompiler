@@ -15,6 +15,7 @@ class PyToGraal:
         tree = ast.parse(inspect.getsource(self.func))
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):
+                # new func added
                 self.do_func(node)
 
         print(self.G)
