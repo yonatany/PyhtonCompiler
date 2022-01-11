@@ -41,9 +41,11 @@ def opaqueCall():
 
 def mc(count):
     a = count
-    while a > 0:
+    if a or count:
         a = a - 1
-    return count
+    else:
+        a = a + 1
+    return count + a
 
 
 if __name__ == '__main__':

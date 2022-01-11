@@ -1,3 +1,4 @@
+import ast
 import inspect
 from helpers import *
 from graphviz import Digraph
@@ -73,16 +74,9 @@ class PyToGraal:
                                  loop_begin_node)
 
         if isinstance(cmd.test, ast.Compare):
-            left, last_control_node = self.get_val_and_print(cmd.test.left, name_to_val, if_node)
-            rights = cmd.test.comparators
-            ops = get_ops(cmd.test.ops)
-            for val, op in zip(rights, ops):
-                right, last_control_node = self.get_val_and_print(val, name_to_val, if_node)
-                comp_node = self.add_node("|" + op, color="Turquoise", shape="diamond")
-                self.G.edge(str(left), str(comp_node), label="x", color="Turquoise")
-                self.G.edge(str(right), str(comp_node), label="y", color="Turquoise")
-                self.G.edge(str(comp_node), str(if_node), label="condition", color="Turquoise")
-                left = right
+            comp_node, _ = self.do_compare(cmd.test, name_to_val, if_node)
+            self.G.edge(str(comp_node), str(if_node), label="condition", color="Turquoise")
+
         # TODO: add more compare cases
         # TODO: fix the "phi problem"
         return loop_exit_node, name_to_val
@@ -90,27 +84,8 @@ class PyToGraal:
     def do_if(self, cmd: ast.If, last_control_node, name_to_val: dict):
         if_node = self.add_node("|If", color="Red", shape="box")
         self.G.edge(str(last_control_node), str(if_node), label="next", color="Red")
-        # cases like "if condition:"
-        if isinstance(cmd.test, ast.Name):
-            left, last_control_node = self.get_val_and_print(cmd.test, name_to_val, if_node)
-            right = self.print_value("Constant(" + str(0) + ", " + type_of_val(0) + ")")
-            comp_node = self.add_node("|!=", color="Turquoise", shape="diamond")
-            self.G.edge(str(left), str(comp_node), label="x", color="Turquoise")
-            self.G.edge(str(right), str(comp_node), label="y", color="Turquoise")
-            self.G.edge(str(comp_node), str(if_node), label="condition", color="Turquoise")
-        # cases like "if cond1 > cond2:"
-        elif isinstance(cmd.test, ast.Compare):
-            left, last_control_node = self.get_val_and_print(cmd.test.left, name_to_val, if_node)
-            rights = cmd.test.comparators
-            ops = get_ops(cmd.test.ops)
-            for val, op in zip(rights, ops):
-                right, last_control_node = self.get_val_and_print(val, name_to_val, if_node)
-                comp_node = self.add_node("|" + op, color="Turquoise", shape="diamond")
-                self.G.edge(str(left), str(comp_node), label="x", color="Turquoise")
-                self.G.edge(str(right), str(comp_node), label="y", color="Turquoise")
-                self.G.edge(str(comp_node), str(if_node), label="condition", color="Turquoise")
-                left = right
-        # TODO: add more if cases
+        self.print_condition(cmd.test, name_to_val, if_node)
+
         begin_true_node = self.add_node("|Begin", color="Red", shape="box")  # begin true
         self.G.edge(str(if_node), str(begin_true_node), label="T", color="Red")
         begin_false_node = self.add_node("|Begin", color="Red", shape="box")  # begin false
@@ -174,29 +149,7 @@ class PyToGraal:
 
         # case relop node
         elif isinstance(value, ast.Compare):
-            left, last_control_node = self.get_val_and_print(value.left, name_to_val, last_control_node)
-            rights = value.comparators
-            ops = get_ops(value.ops)
-            conditions = []
-            for val, op in zip(rights, ops):
-                right, last_control_node = self.get_val_and_print(val, name_to_val, last_control_node)
-                comp_node = self.add_node("|" + op, color="Turquoise", shape="diamond")
-                self.G.edge(str(left), str(comp_node), label="x", color="Turquoise")
-                self.G.edge(str(right), str(comp_node), label="y", color="Turquoise")
-                zero = self.print_value("Constant(" + str(0) + ", " + type_of_val(0) + ")")
-                one = self.print_value("Constant(" + str(1) + ", " + type_of_val(1) + ")")
-                conditional_node = self.add_node("|Conditional", color="Turquoise", shape="diamond")
-                self.G.edge(str(comp_node), str(conditional_node), label="?", color="Turquoise")
-                self.G.edge(str(one), str(conditional_node), label="trueValue", color="Turquoise")
-                self.G.edge(str(zero), str(conditional_node), label="falseValue", color="Turquoise")
-                left = right
-                conditions.append(conditional_node)
-            if len(conditions) > 1:
-                sum_node = self.add_node("|&", color="Turquoise")
-                for cond in conditions:
-                    self.G.edge(str(cond), str(sum_node), color="Turquoise")
-                return sum_node, last_control_node
-            return conditions[0], last_control_node
+            return self.do_compare(value, name_to_val, last_control_node, True)
 
         # case func
         elif isinstance(value, ast.Call):
@@ -255,3 +208,60 @@ class PyToGraal:
         node = self.counter
         self.counter += 1
         return node
+
+    def do_compare(self, compare: ast.Compare, name_to_val: dict, last_control_node, print_val=False):
+        sum_node = None
+        left, last_control_node = self.get_val_and_print(compare.left, name_to_val, last_control_node)
+        rights = compare.comparators
+        ops = get_ops(compare.ops)
+        conditions = []
+        for val, op in zip(rights, ops):
+            right, last_control_node = self.get_val_and_print(val, name_to_val, last_control_node)
+            comp_node = self.add_node("|" + op, color="Turquoise", shape="diamond")
+            self.G.edge(str(left), str(comp_node), label="x", color="Turquoise")
+            self.G.edge(str(right), str(comp_node), label="y", color="Turquoise")
+            if print_val:
+                zero = self.print_value("Constant(" + str(0) + ", " + type_of_val(0) + ")")
+                one = self.print_value("Constant(" + str(1) + ", " + type_of_val(1) + ")")
+                conditional_node = self.add_node("|Conditional", color="Turquoise", shape="diamond")
+                self.G.edge(str(comp_node), str(conditional_node), label="?", color="Turquoise")
+                self.G.edge(str(one), str(conditional_node), label="trueValue", color="Turquoise")
+                self.G.edge(str(zero), str(conditional_node), label="falseValue", color="Turquoise")
+                conditions.append(conditional_node)
+                sum_node = conditional_node
+            else:
+                conditions.append(comp_node)
+                sum_node = comp_node
+            left = right
+        if len(conditions) > 1:
+            sum_node = self.add_node("|&", color="Turquoise", shape="diamond")
+            for cond in conditions:
+                self.G.edge(str(cond), str(sum_node), color="Turquoise")
+
+        return sum_node, last_control_node
+
+    def print_condition(self, test, name_to_val, if_node, label="condition"):
+        # cases like "if condition:"
+        if isinstance(test, ast.Name):
+            to_compare = ast.Compare(left=test, ops=[ast.NotEq()], comparators=[ast.Constant(value=0)])
+            comp_node, _ = self.do_compare(to_compare, name_to_val, if_node)
+
+        # cases like "if cond1 > cond2:"
+        elif isinstance(test, ast.Compare):
+            to_compare = test
+            comp_node, _ = self.do_compare(to_compare, name_to_val, if_node)
+
+        # cases like "if cond1 or cond2:"
+        elif isinstance(test, ast.BoolOp):
+            if isinstance(test.op, ast.And):
+                boolop = "|and"
+            else:  # or
+                boolop = "|or"
+
+            comp_node = self.add_node(boolop, color="Turquoise", shape="ellipse")
+            self.print_condition(test.values[0], name_to_val, comp_node, label="first cond")
+            self.print_condition(test.values[1], name_to_val, comp_node, label="second cond")
+
+        self.G.edge(str(comp_node), str(if_node), label=label, color="Turquoise")
+
+        # TODO: add more if cases
