@@ -27,7 +27,6 @@ class PyToGraal:
         for arg in node.args.args:
             name_to_val[arg.arg] = "Parameter(" + str(parameter_counter) + ")"
             parameter_counter += 1
-            self.counter += 1
         name_to_val = self.do_body(node.body, last_control_node, name_to_val.copy())
         print(name_to_val)
 
