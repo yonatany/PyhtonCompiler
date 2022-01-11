@@ -73,17 +73,14 @@ class PyToGraal:
         name_to_val = merge_dict(name_to_val_loop, name_to_val_before, loop_end_node, end_before_loop_node,
                                  loop_begin_node)
 
-        if isinstance(cmd.test, ast.Compare):
-            comp_node, _ = self.do_compare(cmd.test, name_to_val, if_node)
-            self.G.edge(str(comp_node), str(if_node), label="condition", color="Turquoise")
+        self.print_condition(cmd.test, name_to_val, if_node)
 
-        # TODO: add more compare cases
         # TODO: fix the "phi problem"
         return loop_exit_node, name_to_val
 
     def do_if(self, cmd: ast.If, last_control_node, name_to_val: dict):
         if_node = self.add_node("|If", color="Red", shape="box")
-        self.G.edge(str(last_control_node), str(if_node), label="next", color="Red")
+        self.G.edge(str(last_control_node), str(if_node), color="Red")
         self.print_condition(cmd.test, name_to_val, if_node)
 
         begin_true_node = self.add_node("|Begin", color="Red", shape="box")  # begin true
