@@ -64,18 +64,17 @@ class PyToGraal:
         self.G.edge(str(if_node), str(loop_exit_node), label="F", color="Red")
         self.G.edge(str(loop_exit_node), str(loop_begin_node), style="dashed")
 
-        last_loop_node, name_to_val_loop = self.do_body(cmd.body, begin_node, name_to_val.copy())
-
         loop_end_node = self.add_node("|LoopEnd", color="Red", shape="box")
+
+        name_to_val = self.make_while_dict(name_to_val.copy()) #prepare the dict to the while loop
+
+        self.print_condition(cmd.test, name_to_val, if_node) #print the while condition
+        last_loop_node, name_to_val_loop = self.do_body(cmd.body, begin_node, name_to_val.copy()) #make the while body
+
         self.G.edge(str(last_loop_node), str(loop_end_node), color="Red")
         self.G.edge(str(loop_end_node), str(loop_begin_node), color="Red")
-
-        name_to_val = merge_dict(name_to_val_loop, name_to_val_before, loop_end_node, end_before_loop_node,
-                                 loop_begin_node)
-
-        self.print_condition(cmd.test, name_to_val, if_node)
-
-        # TODO: fix the "phi problem"
+        name_to_val = self.merge_while_dict(name_to_val, name_to_val_loop, name_to_val_before, end_before_loop_node, loop_end_node, loop_begin_node)
+        # TODO: check this func
         return loop_exit_node, name_to_val
 
     def do_if(self, cmd: ast.If, last_control_node, name_to_val: dict):
@@ -176,7 +175,7 @@ class PyToGraal:
 
     def print_value(self, value):
         if type(value) is tuple:  # phi case
-            phi_node = node = self.add_node("|phi")
+            phi_node = node = self.add_node("|phi", shape="box")
             merge_node = value[1]
             self.G.edge(str(phi_node), str(merge_node), style="dashed")
             for val, node_num in value[0]:
@@ -262,3 +261,26 @@ class PyToGraal:
         self.G.edge(str(comp_node), str(if_node), label=label, color="Turquoise")
 
         # TODO: add more if cases
+
+    def make_while_dict(self, orig_dict):
+        new_dict = {}
+        for key in orig_dict:
+            new_dict[key] = self.counter
+            self.counter += 1
+        return new_dict
+
+    def merge_while_dict(self, dict_before, dict_after_loop, pre_dict, before_loop_node, end_loop_node, loop_begin_node):
+        new_dict = {}
+        for key in dict_before:
+            if dict_before[key] == dict_after_loop[key]:
+                new_dict[key] = pre_dict[key]
+            else:
+                phi_node = dict_before[key]
+                val_before_node = self.print_value(pre_dict[key])
+                self.G.node(str(phi_node), str(phi_node) + "|phi", shape="box")
+                self.G.edge(str(dict_after_loop[key]), str(phi_node), label="from " + str(end_loop_node), color="Turquoise")
+                self.G.edge(str(val_before_node), str(phi_node), label="from " + str(before_loop_node), color="Turquoise")
+                self.G.edge(str(phi_node), str(loop_begin_node), style="dashed")
+                new_dict[key] = phi_node
+
+        return new_dict
