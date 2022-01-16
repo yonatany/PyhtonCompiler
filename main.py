@@ -42,6 +42,9 @@ def opaqueCall():
 def mc(count):
     a = count
     while a > 0:
+        y = count
+        while y > 0:
+            y = y - 1
         a = a - 1
     return count
 
