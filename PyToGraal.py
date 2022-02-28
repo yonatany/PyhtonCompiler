@@ -81,7 +81,7 @@ class PyToGraal:
         #self.table_stack.pop()
         # TODO: check this func
         return loop_exit_node
-
+#try push
     def do_if(self, cmd: ast.If, last_control_node):
         if_node = self.add_node("|If", color="Red", shape="box")
         self.G.edge(str(last_control_node), str(if_node), color="Red")
