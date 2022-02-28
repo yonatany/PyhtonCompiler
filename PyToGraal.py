@@ -36,10 +36,24 @@ class PyToGraal:
     def do_body(self, body, last_control_node):
         print(self.table_stack)
         for cmd in body:
-            if isinstance(cmd, ast.Assign):
+            if isinstance(cmd, ast.Assign):  # a = 1
                 value, last_control_node = self.get_val(cmd.value, last_control_node)
                 for lval in cmd.targets:
+                    assert isinstance(lval, ast.Name), "not implemented"
                     self.table_stack[-1][lval.id] = value
+            if isinstance(cmd, ast.AnnAssign):  # a:int = 1
+                assert isinstance(cmd.target, ast.Name), "not implemented"
+                value, last_control_node = self.get_val(cmd.value, last_control_node)
+                self.table_stack[-1][cmd.target.id] = value
+            if isinstance(cmd, ast.AugAssign):  # a += 1
+                assert isinstance(cmd.target, ast.Name), "not implemented"
+                value, last_control_node = self.get_val(ast.BinOp(left=cmd.target, op=cmd.op, right=cmd.value),
+                                                        last_control_node)
+                self.table_stack[-1][cmd.target.id] = value
+            if isinstance(cmd, ast.Raise):  # raise x from y
+                last_control_node = self.do_raise(cmd, last_control_node)
+            if isinstance(cmd, ast.Assert):  # assert x,y
+                last_control_node = self.do_assert(cmd, last_control_node)
             if isinstance(cmd, ast.If):
                 last_control_node = self.do_if(cmd, last_control_node)
             if isinstance(cmd, ast.While):
@@ -78,10 +92,11 @@ class PyToGraal:
         self.G.edge(str(last_loop_node), str(loop_end_node), color="Red")
         self.G.edge(str(loop_end_node), str(loop_begin_node), color="Red")
         self.merge_while_dict(table_start_loop, end_before_loop_node, loop_end_node, loop_begin_node)
-        #self.table_stack.pop()
+        # self.table_stack.pop()
         # TODO: check this func
         return loop_exit_node
-#try push
+
+    # try push
     def do_if(self, cmd: ast.If, last_control_node):
         if_node = self.add_node("|If", color="Red", shape="box")
         self.G.edge(str(last_control_node), str(if_node), color="Red")
@@ -139,6 +154,38 @@ class PyToGraal:
         self.G.edge(str(last_control_node), str(ret_node), color="Red")
         return ret_node
 
+    def do_raise(self, cmd, last_control_node):
+        # print val to raise then the node and edge
+        previous_node = last_control_node
+        val, last_control_node = self.get_val_and_print(cmd.exc, last_control_node)
+        raise_node = self.add_node("|Raise", color="Red", shape="box")
+        self.G.edge(str(val), str(raise_node), label="exception", color="Turquoise")
+        self.G.edge(str(previous_node), str(raise_node), color="Red")
+        if cmd.cause is not None:
+            val, last_control_node = self.get_val_and_print(cmd.cause, last_control_node)
+            self.G.edge(str(val), str(raise_node), label="cause", color="Turquoise")
+        return raise_node
+
+    def do_assert(self, cmd, last_control_node):
+        # print condition to assert then the node and edge
+        previous_node = last_control_node
+        assert_node = self.add_node("|Assert", color="Red", shape="box")
+        self.print_condition(cmd.test, assert_node, last_control_node)
+        self.G.edge(str(previous_node), str(assert_node), color="Red")
+        if cmd.msg is not None:
+            msg, last_control_node = self.get_val_and_print(cmd.msg, last_control_node)
+            self.G.edge(str(msg), str(assert_node), label="msg", color="Turquoise")
+        return assert_node
+
+    def do_delete(self, cmd: ast.Delete, last_control_node):
+        # print condition to assert then the node and edge
+        delete_node = self.add_node("|Delete", color="Red", shape="box")
+        self.G.edge(str(last_control_node), str(delete_node), color="Red")
+        for target in cmd.targets:
+            to_delete, last_control_node = self.get_val_and_print(target, last_control_node)
+            self.G.edge(str(to_delete), str(delete_node), label="to_delete", color="Turquoise")
+        return delete_node
+
     def get_val(self, value, last_control_node):
         # case variable node
         if isinstance(value, ast.Name):
@@ -149,21 +196,21 @@ class PyToGraal:
             return "Constant(" + str(value.value) + ", " + type_of_val(value.value) + ")", last_control_node
         elif isinstance(value, ast.JoinedStr):  # case f"sin({a}) is {sin(a):.3}"
             joinedstr_node = self.add_node("|JoinedStr ", color="Turquoise")
-            for idx,val in enumerate(value.values):
+            for idx, val in enumerate(value.values):
                 node, last_control_node = self.get_val_and_print(val, last_control_node)
-                self.G.edge(str(node), str(joinedstr_node), color="Turquoise", label="str"+str(idx))
+                self.G.edge(str(node), str(joinedstr_node), color="Turquoise", label="str" + str(idx))
             return joinedstr_node, last_control_node
         elif isinstance(value, ast.List):  # case [1,2,3]
             list_node = self.add_node("|List ", color="Turquoise")
-            for idx,val in enumerate(value.elts):
+            for idx, val in enumerate(value.elts):
                 node, last_control_node = self.get_val_and_print(val, last_control_node)
-                self.G.edge(str(node), str(list_node), color="Turquoise", label="element "+str(idx))
+                self.G.edge(str(node), str(list_node), color="Turquoise", label="element " + str(idx))
             return list_node, last_control_node
         elif isinstance(value, ast.Tuple):  # case (1,2,3)
             tuple_node = self.add_node("|Tuple ", color="Turquoise")
-            for idx,val in enumerate(value.elts):
+            for idx, val in enumerate(value.elts):
                 node, last_control_node = self.get_val_and_print(val, last_control_node)
-                self.G.edge(str(node), str(tuple_node), color="Turquoise", label="element "+str(idx))
+                self.G.edge(str(node), str(tuple_node), color="Turquoise", label="element " + str(idx))
             return tuple_node, last_control_node
         elif isinstance(value, ast.Set):  # case {1,2,3}
             set_node = self.add_node("|Set ", color="Turquoise")
@@ -387,13 +434,13 @@ class PyToGraal:
         return new_dict
 
     def merge_while_dict(self, dict_before, before_loop_node, end_loop_node, loop_begin_node):
-        #print(self.table_stack)
+        # print(self.table_stack)
         dict_after_loop = self.table_stack.pop()
         pre_dict = self.table_stack.pop()
-        #print("dict_before", dict_before)
-        #print("dict_after_loop", dict_after_loop)
-        #print("pre_dict", pre_dict)
-        #print("table_stack", self.table_stack)
+        # print("dict_before", dict_before)
+        # print("dict_after_loop", dict_after_loop)
+        # print("pre_dict", pre_dict)
+        # print("table_stack", self.table_stack)
         new_dict = {}
         for key in dict_before:
             if dict_before[key] == dict_after_loop[key]:
@@ -408,5 +455,7 @@ class PyToGraal:
                             color="Turquoise")
                 self.G.edge(str(phi_node), str(loop_begin_node), style="dashed")
                 new_dict[key] = phi_node
-        #print("new_dict", new_dict)
+        # print("new_dict", new_dict)
         self.table_stack.append(new_dict)
+
+
