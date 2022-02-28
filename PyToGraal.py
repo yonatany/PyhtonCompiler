@@ -137,7 +137,7 @@ class PyToGraal:
         ret_node = self.add_node("|Return", color="Red", shape="box")
         self.G.edge(str(val), str(ret_node), label="result", color="Turquoise")
         self.G.edge(str(last_control_node), str(ret_node), color="Red")
-        return None
+        return ret_node
 
     def get_val(self, value, last_control_node):
         # case variable node
