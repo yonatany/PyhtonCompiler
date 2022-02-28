@@ -275,6 +275,8 @@ class PyToGraal:
                 step_node, last_control_node = self.get_val_and_print(value.step, last_control_node)
                 self.G.edge(str(step_node), str(range_node), color="Turquoise", label="index")
             return range_node, last_control_node
+        elif isinstance(value, ast.Index):
+            return self.get_val_and_print(value.value, last_control_node)
         # TODO: add more cases
 
     def print_value(self, value):
