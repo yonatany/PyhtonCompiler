@@ -31,6 +31,17 @@ def get_ops(ops):
     return oplist
 
 
+def get_unop(op):
+    if isinstance(op, ast.UAdd):
+        return "+"
+    if isinstance(op, ast.USub):
+        return "-"
+    if isinstance(op, ast.Not):
+        return "not"
+    if isinstance(op, ast.Invert):
+        return "~"
+
+
 def get_binop(op):
     if isinstance(op, ast.Add):
         return "+"
@@ -63,6 +74,8 @@ def get_binop(op):
 def type_of_val(value):
     if isinstance(value, int):
         return "i64"
+    if isinstance(value, str):
+        return "str"
     # TODO: add more cases
 
 

@@ -147,6 +147,51 @@ class PyToGraal:
         # case constant node
         elif isinstance(value, ast.Constant):
             return "Constant(" + str(value.value) + ", " + type_of_val(value.value) + ")", last_control_node
+        elif isinstance(value, ast.JoinedStr):  # case f"sin({a}) is {sin(a):.3}"
+            joinedstr_node = self.add_node("|JoinedStr ", color="Turquoise")
+            for idx,val in enumerate(value.values):
+                node, last_control_node = self.get_val_and_print(val, last_control_node)
+                self.G.edge(str(node), str(joinedstr_node), color="Turquoise", label="str"+str(idx))
+            return joinedstr_node, last_control_node
+        elif isinstance(value, ast.List):  # case [1,2,3]
+            list_node = self.add_node("|List ", color="Turquoise")
+            for idx,val in enumerate(value.elts):
+                node, last_control_node = self.get_val_and_print(val, last_control_node)
+                self.G.edge(str(node), str(list_node), color="Turquoise", label="element "+str(idx))
+            return list_node, last_control_node
+        elif isinstance(value, ast.Tuple):  # case (1,2,3)
+            tuple_node = self.add_node("|Tuple ", color="Turquoise")
+            for idx,val in enumerate(value.elts):
+                node, last_control_node = self.get_val_and_print(val, last_control_node)
+                self.G.edge(str(node), str(tuple_node), color="Turquoise", label="element "+str(idx))
+            return tuple_node, last_control_node
+        elif isinstance(value, ast.Set):  # case {1,2,3}
+            set_node = self.add_node("|Set ", color="Turquoise")
+            for idx, val in enumerate(value.elts):
+                node, last_control_node = self.get_val_and_print(val, last_control_node)
+                self.G.edge(str(node), str(set_node), color="Turquoise", label="element " + str(idx))
+            return set_node, last_control_node
+        elif isinstance(value, ast.Dict):  # case {k1:1,k2:2,k3:3}
+            dict_node = self.add_node("|Dict ", color="Turquoise")
+            for idx, key, val in enumerate(zip(value.keys, value.values)):
+                key_node, last_control_node = self.get_val_and_print(key, last_control_node)
+                val_node, last_control_node = self.get_val_and_print(val, last_control_node)
+                self.G.edge(str(key_node), str(dict_node), color="Turquoise", label="key " + str(idx))
+                self.G.edge(str(val_node), str(dict_node), color="Turquoise", label="val " + str(idx))
+            return dict_node, last_control_node
+        elif isinstance(value, ast.Starred):  # case *b
+            ref_node = self.add_node("|Reference ", color="Turquoise")
+            node, last_control_node = self.get_val_and_print(value.value, last_control_node)
+            self.G.edge(str(node), str(ref_node), color="Turquoise", label="ref")
+            return ref_node, last_control_node
+        elif isinstance(value, ast.Expr):  # case expr
+            return self.get_val_and_print(value.value, last_control_node)
+        elif isinstance(value, ast.UnaryOp):  # case +b/-b/not b/ ~b
+            unary_op_node = self.add_node("|" + get_unop(value.op), color="Turquoise")
+            node, last_control_node = self.get_val_and_print(value.operand, last_control_node)
+            self.G.edge(str(node), str(unary_op_node), color="Turquoise", label="operand")
+            return unary_op_node, last_control_node
+
         # case binop node
         elif isinstance(value, ast.BinOp):
             left, last_control_node = self.get_val_and_print(value.left, last_control_node)
@@ -184,6 +229,26 @@ class PyToGraal:
             if isinstance(value.func, ast.Attribute):
                 return last_control_node, last_control_node
             return last_control_node, last_control_node
+
+        elif isinstance(value, ast.IfExp):  # case a if b else c
+            if_exp_node = self.add_node("|If Exp", color="Turquoise")
+            self.print_condition(value.test, if_exp_node, last_control_node)
+            then_node, last_control_node = self.get_val_and_print(value.body, last_control_node)
+            else_node, last_control_node = self.get_val_and_print(value.orelse, last_control_node)
+            self.G.edge(str(then_node), str(if_exp_node), color="Turquoise", label="then")
+            self.G.edge(str(else_node), str(if_exp_node), color="Turquoise", label="else")
+            return if_exp_node, last_control_node
+
+        elif isinstance(value, ast.Attribute):  # case snake.colour
+            assert value.ctx == ast.Load(), "store and del attribute not implemented"
+            previous_node = last_control_node
+            obj_node, last_control_node = self.get_val_and_print(value.value, last_control_node)
+            att_node, last_control_node = self.get_val_and_print(value.attr, last_control_node)
+            load_node = self.add_node("|Load Attribute", color="Red", shape="Box")
+            self.G.edge(str(previous_node), str(load_node), color="Red")
+            self.G.edge(str(obj_node), str(load_node), color="Turquoise", label="object")
+            self.G.edge(str(att_node), str(load_node), color="Turquoise", label="attribute")
+            return load_node, load_node
         # TODO: add more cases
 
     def print_value(self, value):
