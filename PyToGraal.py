@@ -249,6 +249,32 @@ class PyToGraal:
             self.G.edge(str(obj_node), str(load_node), color="Turquoise", label="object")
             self.G.edge(str(att_node), str(load_node), color="Turquoise", label="attribute")
             return load_node, load_node
+
+        elif isinstance(value, ast.NamedExpr):  # case x:=4
+            assert False, "NamedExpr not implemented"
+
+        elif isinstance(value, ast.Subscript):  # case l[1:2,3]
+            assert value.ctx == ast.Load(), "store and del subscript not implemented"
+            previous_node = last_control_node
+            obj_node, last_control_node = self.get_val_and_print(value.value, last_control_node)
+
+            load_node = self.add_node("|Load indices", color="Red", shape="Box")
+            self.G.edge(str(previous_node), str(load_node), color="Red")
+            self.G.edge(str(obj_node), str(load_node), color="Turquoise", label="object")
+            for idx in value.slice:
+                index_node, last_control_node = self.get_val_and_print(idx, last_control_node)
+                self.G.edge(str(index_node), str(load_node), color="Turquoise", label="index")
+            return load_node, load_node
+        elif isinstance(value, ast.Slice):  # case l[1:3]
+            range_node = self.add_node("|indices range", color="Turquoise")
+            lower_node, last_control_node = self.get_val_and_print(value.lower, last_control_node)
+            upper_node, last_control_node = self.get_val_and_print(value.upper, last_control_node)
+            self.G.edge(str(lower_node), str(range_node), color="Turquoise", label="lower")
+            self.G.edge(str(upper_node), str(range_node), color="Turquoise", label="upper")
+            if value.step is not None:
+                step_node, last_control_node = self.get_val_and_print(value.step, last_control_node)
+                self.G.edge(str(step_node), str(range_node), color="Turquoise", label="index")
+            return range_node, last_control_node
         # TODO: add more cases
 
     def print_value(self, value):
