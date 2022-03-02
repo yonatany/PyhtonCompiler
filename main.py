@@ -41,11 +41,7 @@ def opaqueCall():
 
 def mc(count):
     while count == 10:
-        count += 1
-        if count < 10:
-            continue
-        else:
-            break
+        break
     return count + 1
 
 

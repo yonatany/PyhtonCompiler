@@ -30,9 +30,7 @@ class PyToGraal:
         for arg in node.args.args:
             self.table_stack[-1][arg.arg] = "Parameter(" + str(parameter_counter) + ")"
             parameter_counter += 1
-        name_to_val = self.do_body(node.body, last_control_node)
-
-        print(name_to_val)
+        last_control_node = self.do_body(node.body, last_control_node)
 
     def do_body(self, body, last_control_node):
         print(self.table_stack)
@@ -154,19 +152,19 @@ class PyToGraal:
         last_false_node = begin_false_node = self.add_node("|Begin", color="Red", shape="box")  # begin false
         self.G.edge(str(if_node), str(begin_false_node), label="F", color="Red")
         if cmd.orelse:
-            #print(cmd.orelse)
-
             last_false_node = self.do_body(cmd.orelse, begin_false_node)  # body false
         table_after_false = self.table_stack.pop()
 
-        last_node, self.table_stack[-1] = self.do_merge(begin_false_node, last_true_node, last_false_node, table_after_true,
+        last_node, self.table_stack[-1] = self.do_merge(begin_false_node, last_true_node, last_false_node,
+                                                        table_after_true,
                                                         table_after_false, table_before_loop)  # merge paths and return
 
         return last_node
 
-    def do_merge(self, begin_false_node, last_true_node, last_false_node, name_to_val_true: dict, name_to_val_false: dict, prev_dict):
+    def do_merge(self, begin_false_node, last_true_node, last_false_node, name_to_val_true: dict,
+                 name_to_val_false: dict, prev_dict):
         # make merge of paths in if cmd. then merge the dict
-        # if node is none, we had return node in that case, so no need to end and merge this path
+        # if node is -1, we had return or break node in that case, so no need to end and merge this path
         end_true_node = -1
         end_false_node = last_false_node
 
