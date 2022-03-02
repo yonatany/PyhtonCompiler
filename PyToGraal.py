@@ -12,6 +12,7 @@ class PyToGraal:
         self.G = Digraph()
         self.name_to_node = {}
         self.table_stack = []
+        self.loop_exit = []
 
     def parse(self):
         tree = ast.parse(inspect.getsource(self.func))
@@ -56,8 +57,14 @@ class PyToGraal:
                 last_control_node = self.do_assert(cmd, last_control_node)
             if isinstance(cmd, ast.If):
                 last_control_node = self.do_if(cmd, last_control_node)
+            if isinstance(cmd, ast.For):
+                last_control_node = self.do_for(cmd, last_control_node)
             if isinstance(cmd, ast.While):
                 last_control_node = self.do_while(cmd, last_control_node)
+            if isinstance(cmd, ast.Break):
+                last_control_node = self.do_break(cmd, last_control_node)
+            if isinstance(cmd, ast.Continue):
+                last_control_node = self.do_continue(cmd, last_control_node)
             if isinstance(cmd, ast.Return):
                 last_control_node = self.do_return(cmd, last_control_node)
         print(self.table_stack)
@@ -66,6 +73,40 @@ class PyToGraal:
 
     def do_while(self, cmd, last_control_node):
         # print all while nodes and edges:
+        end_before_loop_node = self.add_node("|End", color="Red", shape="box")
+        self.G.edge(str(last_control_node), str(end_before_loop_node), color="Red")
+
+        loop_begin_node = last_control_node = self.add_node("|LoopBegin", color="Red", shape="box")
+        self.G.edge(str(end_before_loop_node), str(loop_begin_node), color="Red")
+
+        if_node = self.add_node("|If", color="Red", shape="box")
+        self.G.edge(str(last_control_node), str(if_node), color="Red")
+
+        begin_node = self.add_node("|Begin", color="Red", shape="box")
+        self.G.edge(str(if_node), str(begin_node), label="T", color="Red")
+
+        loop_exit_node = self.add_node("|LoopExit", color="Red", shape="box")
+        self.loop_exit.append(loop_exit_node)
+        self.G.edge(str(if_node), str(loop_exit_node), label="F", color="Red")
+        self.G.edge(str(loop_exit_node), str(loop_begin_node), style="dashed")
+
+        table_start_loop = self.make_while_dict()  # prepare the dict to the while loop
+        self.table_stack.append(table_start_loop.copy())
+        self.print_condition(cmd.test, if_node)  # print the while condition
+        last_loop_node = self.do_body(cmd.body, begin_node)  # make the while body
+        loop_end_node = begin_node
+        if last_loop_node != -1:
+            loop_end_node = self.add_node("|LoopEnd", color="Red", shape="box")
+            self.G.edge(str(last_loop_node), str(loop_end_node), color="Red")
+            self.G.edge(str(loop_end_node), str(loop_begin_node), color="Red")
+        self.merge_while_dict(table_start_loop, end_before_loop_node, loop_end_node, loop_begin_node)
+        self.loop_exit.pop()
+        # self.table_stack.pop()
+        # TODO: check this func
+        return loop_exit_node
+
+    def do_for(self, cmd, last_control_node):
+        # print all For nodes and edges:
         end_before_loop_node = self.add_node("|End", color="Red", shape="box")
         self.G.edge(str(last_control_node), str(end_before_loop_node), color="Red")
 
@@ -104,37 +145,46 @@ class PyToGraal:
 
         begin_true_node = self.add_node("|Begin", color="Red", shape="box")  # begin true
         self.G.edge(str(if_node), str(begin_true_node), label="T", color="Red")
-        begin_false_node = self.add_node("|Begin", color="Red", shape="box")  # begin false
-        self.G.edge(str(if_node), str(begin_false_node), label="F", color="Red")
 
         table_before_loop = self.table_stack[-1].copy()
         self.table_stack.append(table_before_loop.copy())
         last_true_node = self.do_body(cmd.body, begin_true_node)  # body true
         table_after_true = self.table_stack.pop()
         self.table_stack.append(table_before_loop.copy())
-        last_false_node, name_to_val_false = self.do_body(cmd.orelse, begin_false_node)  # body false
+        last_false_node = begin_false_node = self.add_node("|Begin", color="Red", shape="box")  # begin false
+        self.G.edge(str(if_node), str(begin_false_node), label="F", color="Red")
+        if cmd.orelse:
+            #print(cmd.orelse)
+
+            last_false_node = self.do_body(cmd.orelse, begin_false_node)  # body false
         table_after_false = self.table_stack.pop()
 
-        last_node, self.table_stack[-1] = self.do_merge(last_true_node, last_false_node, table_after_true,
+        last_node, self.table_stack[-1] = self.do_merge(begin_false_node, last_true_node, last_false_node, table_after_true,
                                                         table_after_false, table_before_loop)  # merge paths and return
 
         return last_node
 
-    def do_merge(self, last_true_node, last_false_node, name_to_val_true: dict, name_to_val_false: dict, prev_dict):
+    def do_merge(self, begin_false_node, last_true_node, last_false_node, name_to_val_true: dict, name_to_val_false: dict, prev_dict):
         # make merge of paths in if cmd. then merge the dict
         # if node is none, we had return node in that case, so no need to end and merge this path
-        if last_true_node is None:
-            if last_false_node is None:
-                return None, prev_dict
+        end_true_node = -1
+        end_false_node = last_false_node
+
+        if last_true_node == -1:
+            if last_false_node == -1:
+                return -1, prev_dict
             else:
-                end_false_node = self.add_node("|End", color="Red", shape="box")
-                self.G.edge(str(last_false_node), str(end_false_node), color="Red")
+                if last_false_node != begin_false_node:
+                    end_false_node = self.add_node("|End", color="Red", shape="box")
+                    self.G.edge(str(last_false_node), str(end_false_node), color="Red")
                 return end_false_node, name_to_val_false
         else:
+
             end_true_node = self.add_node("|End", color="Red", shape="box")
             self.G.edge(str(last_true_node), str(end_true_node), color="Red")
-            if last_false_node is None:
+            if last_false_node == -1:
                 return end_true_node, name_to_val_true
+
             end_false_node = self.add_node("|End", color="Red", shape="box")
             self.G.edge(str(last_false_node), str(end_false_node), color="Red")
 
@@ -152,7 +202,21 @@ class PyToGraal:
         ret_node = self.add_node("|Return", color="Red", shape="box")
         self.G.edge(str(val), str(ret_node), label="result", color="Turquoise")
         self.G.edge(str(last_control_node), str(ret_node), color="Red")
-        return ret_node
+        return -1
+
+    def do_break(self, cmd, last_control_node):
+        # print the node and edge
+        break_node = self.add_node("|Break", color="Red", shape="box")
+        self.G.edge(str(last_control_node), str(break_node), color="Red")
+        self.G.edge(str(break_node), str(self.loop_exit[-1]), color="Red")
+
+        return -1
+
+    def do_continue(self, cmd, last_control_node):
+        # print the node and edge
+        continue_node = self.add_node("|Continue", color="Red", shape="box")
+        self.G.edge(str(last_control_node), str(continue_node), color="Red")
+        return continue_node
 
     def do_raise(self, cmd, last_control_node):
         # print val to raise then the node and edge
@@ -457,5 +521,3 @@ class PyToGraal:
                 new_dict[key] = phi_node
         # print("new_dict", new_dict)
         self.table_stack.append(new_dict)
-
-

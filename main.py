@@ -40,17 +40,16 @@ def opaqueCall():
 
 
 def mc(count):
-    a = count
-    while a > 0:
-        y = count
-        while y > 0:
-            y = y - 1
-        a = a - 1
-    return count
+    while count == 10:
+        count += 1
+        if count < 10:
+            continue
+        else:
+            break
+    return count + 1
 
 
 if __name__ == '__main__':
-    print()
     p = PyToGraal(mc)
     p.parse()
 
