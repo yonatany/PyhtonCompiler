@@ -40,12 +40,19 @@ def opaqueCall():
 
 
 def mc(count):
-    while count == 10:
-        break
-    return count + 1
+    a = count
+    while a < 10:
+        y = a
+        while y < 10:
+            y += 1
+        a += 1
+    return print(count)
 
 
 if __name__ == '__main__':
+    import sys
+
+    print(sys.version)
     p = PyToGraal(mc)
     p.parse()
 

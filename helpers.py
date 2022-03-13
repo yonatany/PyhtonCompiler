@@ -41,6 +41,12 @@ def get_unop(op):
     if isinstance(op, ast.Invert):
         return "~"
 
+def get_boolop(op):
+    if isinstance(op, ast.And):
+        return "and"
+    if isinstance(op, ast.Or):
+        return "or"
+
 
 def get_binop(op):
     if isinstance(op, ast.Add):
@@ -72,6 +78,8 @@ def get_binop(op):
 
 
 def type_of_val(value):
+    if isinstance(value, bool):
+        return "i1"
     if isinstance(value, int):
         return "i64"
     if isinstance(value, str):
