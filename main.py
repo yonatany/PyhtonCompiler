@@ -2,12 +2,26 @@
 
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+import unittest
+
+
+class TestSum(unittest.TestCase):
+
+    def test_quicksort(self):
+        p = PyToGraal(quicksort)
+        p.parse()
+        p.print_pdf("quicksort")
+
+    def test_mccarthy91(self):
+        p = PyToGraal(mccarthy91)
+        p.parse()
+        p.print_pdf("mccarthy91")
 
 
 from PyToGraal import PyToGraal
 
 
-def mccarthy91(l: float, b, c) -> float:
+def mccarthy91(l: float) -> float:
     n = l
     c = 1
     while c != 0:
@@ -18,6 +32,33 @@ def mccarthy91(l: float, b, c) -> float:
             n += 11
             c += 2
     return n
+
+
+def quicksort(a, m, n) -> None:
+    if n <= m:
+        return
+    i = m - 1
+    j = n
+    v = a[n]
+    while True:
+        i += 1
+        while a[i] < v:
+            i += 1
+        j -= 1
+        while a[j] > v:
+            i -= 1
+        if i >= j:
+            break
+        x = a[i]
+        a[i] = a[j]
+        a[j] = x
+
+    x = a[i]
+    a[i] = a[n]
+    a[n] = x
+
+    quicksort(a, m, j)
+    quicksort(a, i + 1, n)
 
 
 class A:
@@ -50,10 +91,6 @@ def mc(count):
 
 
 if __name__ == '__main__':
-    import sys
-
-    print(sys.version)
-    p = PyToGraal(mc)
-    p.parse()
+    unittest.main()
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
