@@ -59,6 +59,16 @@ class PyToGraal:
                 last_control_node = self.do_raise(cmd, last_control_node)
             if isinstance(cmd, ast.Assert):  # assert x,y
                 last_control_node = self.do_assert(cmd, last_control_node)
+            if isinstance(cmd, ast.Pass):
+                self.do_pass(cmd, last_control_node)
+            if isinstance(cmd, ast.Import):
+                last_control_node = self.do_import(cmd, last_control_node)
+            if isinstance(cmd, ast.ImportFrom):
+                last_control_node = self.do_importfrom(cmd, last_control_node)
+            if isinstance(cmd, ast.Try):
+                last_control_node = self.do_try(cmd, last_control_node)
+            if isinstance(cmd, ast.With):
+                last_control_node = self.do_with(cmd, last_control_node)
             if isinstance(cmd, ast.If):
                 last_control_node = self.do_if(cmd, last_control_node)
             if isinstance(cmd, ast.For):
@@ -71,8 +81,10 @@ class PyToGraal:
                 last_control_node = self.do_continue(cmd, last_control_node)
             if isinstance(cmd, ast.Return):
                 last_control_node = self.do_return(cmd, last_control_node)
-        #            if isinstance(cmd, ast.Match):
-        #                last_control_node = self.do_match(cmd, last_control_node)
+            if isinstance(cmd, ast.Yield):
+                last_control_node = self.do_yield(cmd, last_control_node)
+            if isinstance(cmd, ast.Match):
+                last_control_node = self.do_match(cmd, last_control_node)
         # print(self.table_stack)
 
         return last_control_node
@@ -112,31 +124,32 @@ class PyToGraal:
         return loop_exit_node
 
     def do_for(self, cmd: ast.For, last_control_node):
+        raise NotImplementedError
         # print all For nodes and edges:
-        end_before_loop_node = self.add_node("|End", color="Red", shape="box")
-        self.add_edge(last_control_node, end_before_loop_node, color="Red")
+        #end_before_loop_node = self.add_node("|End", color="Red", shape="box")
+        #self.add_edge(last_control_node, end_before_loop_node, color="Red")
 
-        loop_begin_node = last_control_node = self.add_node("|ForLoopBegin", color="Red", shape="box")
-        self.add_edge(end_before_loop_node, loop_begin_node, color="Red")
+        #loop_begin_node = last_control_node = self.add_node("|ForLoopBegin", color="Red", shape="box")
+        #self.add_edge(end_before_loop_node, loop_begin_node, color="Red")
 
-        iter_node, last_control_node = self.get_val_and_print(cmd.iter, last_control_node)
+        #iter_node, last_control_node = self.get_val_and_print(cmd.iter, last_control_node)
 
-        loop_exit_node = self.add_node("|LoopExit", color="Red", shape="box")
-        self.add_edge(loop_exit_node, loop_begin_node, color="Red")
+        #loop_exit_node = self.add_node("|LoopExit", color="Red", shape="box")
+        #self.add_edge(loop_exit_node, loop_begin_node, color="Red")
 
-        loop_end_node = self.add_node("|LoopEnd", color="Red", shape="box")
-        self.table_stack[-1][cmd.target.id] = iter_node
+        #loop_end_node = self.add_node("|LoopEnd", color="Red", shape="box")
+        #self.table_stack[-1][cmd.target.id] = iter_node
 
-        table_start_loop = self.make_while_dict()  # prepare the dict to the while loop
-        self.table_stack.append(table_start_loop.copy())
-        last_loop_node = self.do_body(cmd.body, loop_begin_node)  # make the while body
+        #table_start_loop = self.make_while_dict()  # prepare the dict to the while loop
+        #self.table_stack.append(table_start_loop.copy())
+        #last_loop_node = self.do_body(cmd.body, loop_begin_node)  # make the while body
 
-        self.add_edge(last_loop_node, loop_end_node, color="Red")
-        self.add_edge(loop_end_node, loop_begin_node, color="Red")
-        self.merge_while_dict(table_start_loop, end_before_loop_node, loop_end_node, loop_begin_node)
+        #self.add_edge(last_loop_node, loop_end_node, color="Red")
+        #self.add_edge(loop_end_node, loop_begin_node, color="Red")
+        #self.merge_while_dict(table_start_loop, end_before_loop_node, loop_end_node, loop_begin_node)
         # self.table_stack.pop()
         # TODO: check this func
-        return loop_exit_node
+        #return loop_exit_node
 
     # try push
     def do_if(self, cmd: ast.If, last_control_node):
@@ -165,7 +178,7 @@ class PyToGraal:
         return last_node
 
     def do_match(self, cmd, last_control_node):
-        raise "not_implemnted"
+        raise NotImplementedError
     #        match_node = self.add_node("|Pattern Match", color="Red", shape="box")
     #        self.G.edge(str(last_control_node), str(match_node), color="Red")
     #        subject_node, last_control_node = self.get_val_and_print(cmd.subject, match_node)
@@ -294,12 +307,15 @@ class PyToGraal:
             return "Constant(" + str(value) + ", str)", last_control_node
         elif isinstance(value, ast.Constant):
             return "Constant(" + str(value.value) + ", " + type_of_val(value.value) + ")", last_control_node
+        elif isinstance(value, ast.FormattedValue):
+            raise NotImplementedError
         elif isinstance(value, ast.JoinedStr):  # case f"sin({a}) is {sin(a):.3}"
-            joinedstr_node = self.add_node("|JoinedStr ", color="Turquoise")
-            for idx, val in enumerate(value.values):
-                node, last_control_node = self.get_val_and_print(val, last_control_node)
-                self.add_edge(node, joinedstr_node, color="Turquoise", label="str" + str(idx))
-            return joinedstr_node, last_control_node
+            raise NotImplementedError
+            #joinedstr_node = self.add_node("|JoinedStr ", color="Turquoise")
+            #for idx, val in enumerate(value.values):
+            #    node, last_control_node = self.get_val_and_print(val, last_control_node)
+            #    self.add_edge(node, joinedstr_node, color="Turquoise", label="str" + str(idx))
+            #return joinedstr_node, last_control_node
         elif isinstance(value, ast.List):  # case [1,2,3]
             list_node = self.add_node("|List ", color="Turquoise")
             for idx, val in enumerate(value.elts):
@@ -384,7 +400,8 @@ class PyToGraal:
             if isinstance(value.func, ast.Attribute):
                 return last_control_node, last_control_node
             return last_control_node, last_control_node
-
+        elif isinstance(value, ast.keyword):
+            raise NotImplementedError
         elif isinstance(value, ast.IfExp):  # case a if b else c
             if_exp_node = self.add_node("|If Exp", color="Turquoise")
             self.print_condition(value.test, if_exp_node, last_control_node)
@@ -406,8 +423,7 @@ class PyToGraal:
             return load_node, load_node
 
         elif isinstance(value, ast.NamedExpr):  # case x:=4
-            assert False, "NamedExpr not implemented"
-
+            raise NotImplementedError
         elif isinstance(value, ast.Subscript):  # case l[1:2,3]
             # assert isinstance(value.ctx, ast.Load), str(value.value.id)+str(value.slice.value.id)+str(value.ctx)+" store and del subscript not implemented"
 
@@ -598,3 +614,21 @@ class PyToGraal:
                 new_dict[key] = phi_node
         # print("new_dict", new_dict)
         self.table_stack.append(new_dict)
+
+    def do_pass(self, cmd, last_control_node):
+        pass
+
+    def do_import(self, cmd, last_control_node):
+        raise NotImplementedError
+
+    def do_importfrom(self, cmd, last_control_node):
+        raise NotImplementedError
+
+    def do_try(self, cmd, last_control_node):
+        raise NotImplementedError
+
+    def do_with(self, cmd, last_control_node):
+        raise NotImplementedError
+
+    def do_yield(self, cmd, last_control_node):
+        raise NotImplementedError
