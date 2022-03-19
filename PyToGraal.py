@@ -13,6 +13,7 @@ class PyToGraal:
         self.name_to_node = {}
         self.table_stack = []
         self.loop_exit = []
+        self.for_index = 0
 
     def parse(self):
         tree = ast.parse(inspect.getsource(self.func))
@@ -35,7 +36,6 @@ class PyToGraal:
         last_control_node = self.do_body(node.body, last_control_node)
 
     def do_body(self, body, last_control_node):
-        # print(self.table_stack)
         for cmd in body:
             if isinstance(cmd, ast.Assign):  # a = 1
                 value, last_control_node = self.get_val(cmd.value, last_control_node)
@@ -83,13 +83,17 @@ class PyToGraal:
                 last_control_node = self.do_return(cmd, last_control_node)
             if isinstance(cmd, ast.Yield):
                 last_control_node = self.do_yield(cmd, last_control_node)
-            if isinstance(cmd, ast.Match):
-                last_control_node = self.do_match(cmd, last_control_node)
-        # print(self.table_stack)
+            if isinstance(cmd, ast.ListComp):
+                last_control_node = self.do_list_comp(cmd, last_control_node)
+            if isinstance(cmd, ast.Call):
+                print("im here dummy")
+                last_control_node = self.do_call(cmd, last_control_node)
+            # if isinstance(cmd, ast.Match):
+            #    last_control_node = self.do_match(cmd, last_control_node)
 
         return last_control_node
 
-    def do_while(self, cmd, last_control_node):
+    def do_while(self, cmd, last_control_node, over_dict=None):
         # print all while nodes and edges:
         previous_node = last_control_node
 
@@ -98,7 +102,6 @@ class PyToGraal:
         self.add_edge(previous_node, loop_begin_node, color="Red")
 
         if_node = self.add_node("|If", color="Red", shape="box")
-        self.add_edge(last_control_node, if_node, color="Red")
 
         begin_node = self.add_node("|Begin", color="Red", shape="box")
         self.add_edge(if_node, begin_node, color="Red", label="T")
@@ -107,10 +110,11 @@ class PyToGraal:
         self.loop_exit.append(loop_exit_node)
         self.add_edge(if_node, loop_exit_node, color="Red", label="F")
         self.add_edge(loop_exit_node, loop_begin_node)
-
-        table_start_loop = self.make_while_dict()  # prepare the dict to the while loop
+        table_start_loop = self.make_while_dict(over_dict)  # prepare the dict to the while loop
         self.table_stack.append(table_start_loop.copy())
-        self.print_condition(cmd.test, if_node)  # print the while condition
+        last_control_node = self.print_condition(cmd.test, if_node, last_control_node)  # print the while condition
+        self.add_edge(last_control_node, if_node, color="Red")
+
         last_loop_node = self.do_body(cmd.body, begin_node)  # make the while body
         loop_end_node = begin_node
         if last_loop_node != -1:
@@ -123,39 +127,62 @@ class PyToGraal:
         # TODO: check this func
         return loop_exit_node
 
-    def do_for(self, cmd: ast.For, last_control_node):
-        raise NotImplementedError
-        # print all For nodes and edges:
-        #end_before_loop_node = self.add_node("|End", color="Red", shape="box")
-        #self.add_edge(last_control_node, end_before_loop_node, color="Red")
+    def do_for(self, cmd: ast.For, last_control_node,over_dict=None):
+        # convert for to while:
+        # For x in list:
+        #   Body
+        #
+        # =>
+        #
+        # i = 0;
+        # While i < list.len:
+        #   x = list[i]
+        #   Body
+        #   i += 1
 
-        #loop_begin_node = last_control_node = self.add_node("|ForLoopBegin", color="Red", shape="box")
-        #self.add_edge(end_before_loop_node, loop_begin_node, color="Red")
+        for_idx_name = "for_idx_" + str(self.for_index)
+        self.for_index += 1
+        value, last_control_node = self.get_val(ast.Constant(value=0), last_control_node)
+        self.table_stack[-1][for_idx_name] = value
+        for_test = ast.Compare(left=ast.Name(id=for_idx_name), ops=[ast.Lt()],
+                               comparators=[ast.Call(func=ast.Name(id='len'), args=[cmd.iter])])
+        for_init = [ast.Assign(targets=[cmd.target],
+                               value=ast.Subscript(value=cmd.iter, slice=ast.Index(ast.Name(id=for_idx_name)),
+                                                   ctx=ast.Load()))]
+        for_end = [ast.AugAssign(target=ast.Name(id=for_idx_name), op=ast.Add(), value=ast.Constant(value=1))]
+        for_body = for_init + cmd.body + for_end
+        while_cmd = ast.While(test=for_test, body=for_body, orelse=cmd.orelse)
 
-        #iter_node, last_control_node = self.get_val_and_print(cmd.iter, last_control_node)
+        return self.do_while(while_cmd, last_control_node, over_dict)
 
-        #loop_exit_node = self.add_node("|LoopExit", color="Red", shape="box")
-        #self.add_edge(loop_exit_node, loop_begin_node, color="Red")
+    def do_list_comp(self, cmd, last_control_node):
+        # convert list_comp to for:
+        # [f(x) for x in lst]
+        #
+        # =>
+        #
+        # New_lst = []
+        # For x in lst:
+        #   New_lst.append(f(x))
+        # Return new_lst
 
-        #loop_end_node = self.add_node("|LoopEnd", color="Red", shape="box")
-        #self.table_stack[-1][cmd.target.id] = iter_node
+        for generator in cmd.generators:
+            previous_node = last_control_node
+            last_control_node = lst_node = self.add_node("|NewList", color="Red")
+            self.add_edge(previous_node, lst_node, color="Red")
+            list_comp_name = "list_comp_" + str(self.for_index)
+            self.for_index += 1
+            #value, last_control_node = self.get_val(ast.List(elts=[]), last_control_node)
+            self.table_stack[-1][list_comp_name] = lst_node
+            for_body = [ast.Call(func=ast.Attribute(value=ast.Name(id=list_comp_name),attr='append'),args=[cmd.elt])]
+            for_cmd = ast.For(target=generator.target, iter=generator.iter, body=for_body, orelse=[])
 
-        #table_start_loop = self.make_while_dict()  # prepare the dict to the while loop
-        #self.table_stack.append(table_start_loop.copy())
-        #last_loop_node = self.do_body(cmd.body, loop_begin_node)  # make the while body
+            return lst_node, self.do_for(for_cmd, last_control_node, over_dict={list_comp_name:lst_node})
 
-        #self.add_edge(last_loop_node, loop_end_node, color="Red")
-        #self.add_edge(loop_end_node, loop_begin_node, color="Red")
-        #self.merge_while_dict(table_start_loop, end_before_loop_node, loop_end_node, loop_begin_node)
-        # self.table_stack.pop()
-        # TODO: check this func
-        #return loop_exit_node
-
-    # try push
     def do_if(self, cmd: ast.If, last_control_node):
         if_node = self.add_node("|If", color="Red", shape="box")
+        last_control_node = self.print_condition(cmd.test, if_node, last_control_node)
         self.add_edge(last_control_node, if_node, color="Red")
-        self.print_condition(cmd.test, if_node)
 
         begin_true_node = self.add_node("|Begin", color="Red", shape="box")  # begin true
         self.add_edge(if_node, begin_true_node, color="Red", label="T")
@@ -177,8 +204,31 @@ class PyToGraal:
 
         return last_node
 
+    def do_call(self, cmd, last_control_node):
+        args_count = 0
+        func_node = self.add_node("|MethodCallTarget", shape="box")
+        if isinstance(cmd.func, ast.Name):  # case reg func
+            name = cmd.func.id
+        elif isinstance(cmd.func, ast.Attribute):  # case class method func
+            object = cmd.func.value
+            name = "Class." + cmd.func.attr
+            object_node, last_control_node = self.get_val_and_print(object, last_control_node)
+            self.add_edge(object_node, func_node, color="Turquoise", label="arg[" + str(args_count) + "]")
+            args_count += 1
+        call_node = self.add_node("|Call " + name, color="Red", shape="box")
+        self.add_edge(call_node, func_node)
+        self.add_edge(last_control_node, call_node, color="Red")
+        last_control_node = call_node
+
+        for arg in cmd.args:
+            val_node, last_control_node = self.get_val_and_print(arg, last_control_node)
+            self.add_edge(val_node, func_node, color="Turquoise", label="arg[" + str(args_count) + "]")
+            args_count += 1
+        return last_control_node
+
     def do_match(self, cmd, last_control_node):
         raise NotImplementedError
+
     #        match_node = self.add_node("|Pattern Match", color="Red", shape="box")
     #        self.G.edge(str(last_control_node), str(match_node), color="Red")
     #        subject_node, last_control_node = self.get_val_and_print(cmd.subject, match_node)
@@ -246,7 +296,7 @@ class PyToGraal:
 
         if cmd.value is not None:
             val, last_control_node = self.get_val_and_print(cmd.value, last_control_node)
-            self.add_edge(val, ret_node, label="result", color="Red")
+            self.add_edge(val, ret_node, label="result", color="Turquoise")
 
         self.add_edge(last_control_node, ret_node, color="Red")
         return -1
@@ -297,7 +347,7 @@ class PyToGraal:
         self.add_edge(last_control_node, delete_node, color="Red")
         return delete_node
 
-    def get_val(self, value, last_control_node):
+    def get_val(self, value, last_control_node):  # all literal handlers
         # case variable node
         if isinstance(value, ast.Name):
             # print(self.table_stack)
@@ -311,11 +361,11 @@ class PyToGraal:
             raise NotImplementedError
         elif isinstance(value, ast.JoinedStr):  # case f"sin({a}) is {sin(a):.3}"
             raise NotImplementedError
-            #joinedstr_node = self.add_node("|JoinedStr ", color="Turquoise")
-            #for idx, val in enumerate(value.values):
+            # joinedstr_node = self.add_node("|JoinedStr ", color="Turquoise")
+            # for idx, val in enumerate(value.values):
             #    node, last_control_node = self.get_val_and_print(val, last_control_node)
             #    self.add_edge(node, joinedstr_node, color="Turquoise", label="str" + str(idx))
-            #return joinedstr_node, last_control_node
+            # return joinedstr_node, last_control_node
         elif isinstance(value, ast.List):  # case [1,2,3]
             list_node = self.add_node("|List ", color="Turquoise")
             for idx, val in enumerate(value.elts):
@@ -378,27 +428,7 @@ class PyToGraal:
             return op_node, last_control_node
         # case func
         elif isinstance(value, ast.Call):
-            args_count = 0
-            func_node = self.add_node("|MethodCallTarget", shape="box")
-            if isinstance(value.func, ast.Name):  # case reg func
-                name = value.func.id
-            elif isinstance(value.func, ast.Attribute):  # case class method func
-                object = value.func.value
-                name = "Class." + value.func.attr
-                object_node, last_control_node = self.get_val_and_print(object, last_control_node)
-                self.add_edge(object_node, func_node, color="Turquoise", label="arg[" + str(args_count) + "]")
-                args_count += 1
-            call_node = self.add_node("|Call " + name, color="Red", shape="box")
-            self.add_edge(call_node, func_node, color="Red")
-            self.add_edge(last_control_node, call_node)
-            last_control_node = call_node
-
-            for arg in value.args:
-                val_node, last_control_node = self.get_val_and_print(arg, last_control_node)
-                self.add_edge(val_node, func_node, color="Turquoise", label="arg[" + str(args_count) + "]")
-                args_count += 1
-            if isinstance(value.func, ast.Attribute):
-                return last_control_node, last_control_node
+            last_control_node = self.do_call(value, last_control_node)
             return last_control_node, last_control_node
         elif isinstance(value, ast.keyword):
             raise NotImplementedError
@@ -457,11 +487,12 @@ class PyToGraal:
                 self.add_edge(step_node, range_node, color="Turquoise", label="index")
             return range_node, last_control_node
         elif isinstance(value, ast.Index):
-
             return self.get_val_and_print(value.value, last_control_node)
+        elif isinstance(value, ast.ListComp):
+            return self.do_list_comp(value, last_control_node)
         # TODO: add more cases
 
-    def print_value(self, value):
+    def print_value(self, value, over_node=None):
         if type(value) is tuple:  # phi case
             phi_node = node = self.add_node("|phi", shape="box")
             merge_node = value[1]
@@ -474,29 +505,30 @@ class PyToGraal:
         else:
             if type(value) is int:  # val is already node
                 node = value
-            elif value in self.name_to_node:
+            elif value in self.name_to_node:  # val is already printed
                 node = self.name_to_node[value]
             else:  # value is ready to print
-                self.name_to_node[value] = node = self.add_node("|" + str(value), color="Turquoise")
+                self.name_to_node[value] = node = self.add_node("|" + str(value), color="Turquoise",
+                                                                over_node=over_node)
 
         return node
 
     def get_val_and_print(self, object, last_control_node):
-        # print(object, type(object))
         object_node, last_control_node = self.get_val(object, last_control_node)
         if type(object_node) != int:
             object_node = self.print_value(object_node)
         return object_node, last_control_node
 
-    def add_node(self, text, color="black", shape="ellipse"):
-        # print(text)
+    def add_node(self, text, color="black", shape="ellipse", over_node=None):
+        if over_node is not None:
+            self.G.node(str(over_node), str(over_node) + text, color=color, shape=shape)
+            return over_node
         self.G.node(str(self.counter), str(self.counter) + text, color=color, shape=shape)
         node = self.counter
         self.counter += 1
         return node
 
     def add_edge(self, node1, node2, label="", color="Black"):
-        # print(text)
         style = ""
         att = ""
         if color == "Red":
@@ -539,21 +571,16 @@ class PyToGraal:
 
         return sum_node, last_control_node
 
-    def print_condition(self, test, if_node, label="condition"):
+    def print_condition(self, test, if_node, last_control_node, label="condition"):
         # cases like "if condition:"
         if isinstance(test, ast.Name) or isinstance(test, ast.Constant):
             to_compare = ast.Compare(left=test, ops=[ast.NotEq()], comparators=[ast.Constant(value=0)])
-            comp_node, _ = self.do_compare(to_compare, if_node)
-
-        # cases like "if True:"
-        # elif isinstance(test, ast.Constant):
-        #    to_compare = ast.Compare(left=test, ops=[ast.NotEq()], comparators=[ast.Constant(value=0)])
-        #    comp_node, _ = self.do_compare(to_compare, if_node)
+            comp_node, last_control_node = self.do_compare(to_compare, last_control_node)
 
         # cases like "if cond1 > cond2:"
         elif isinstance(test, ast.Compare):
             to_compare = test
-            comp_node, _ = self.do_compare(to_compare, if_node)
+            comp_node, last_control_node = self.do_compare(to_compare, last_control_node)
 
         # cases like "if cond1 or cond2:"
         elif isinstance(test, ast.BoolOp):
@@ -570,37 +597,33 @@ class PyToGraal:
         self.add_edge(comp_node, if_node, label=label, color="Turquoise")
 
         # TODO: add more if cases
+        return last_control_node
 
-    def make_while_dict(self):
+    def make_while_dict(self, over_dict=None):
         new_dict = {}
-        used_keys = []
         for key in self.table_stack[-1]:
-            # if key not in used_keys:
-            #    key_in_val = [key]
-
-            # new_dict[key] = self.counter
-            # for next_key in orig_dict:
-
-            #   if key != next_key and orig_dict[key] == orig_dict[next_key]:
-            #      key_in_val.append(next_key)
-            #     new_dict[next_key] = self.counter
             new_dict[key] = self.counter
             self.counter += 1
-            # used_keys += key_in_val
+        if over_dict is not None:
+            for key in over_dict:
+                new_dict[key] = over_dict[key]
         return new_dict
 
     def merge_while_dict(self, dict_before, before_loop_node, end_loop_node, loop_begin_node):
-        # print(self.table_stack)
         dict_after_loop = self.table_stack.pop()
         pre_dict = self.table_stack.pop()
-        # print("dict_before", dict_before)
-        # print("dict_after_loop", dict_after_loop)
-        # print("pre_dict", pre_dict)
-        # print("table_stack", self.table_stack)
         new_dict = {}
         for key in dict_before:
             if dict_before[key] == dict_after_loop[key]:
                 new_dict[key] = pre_dict[key]
+                if '\t' + str(dict_before[key]) + ' [' not in self.G.source:
+                    for n in range(self.counter):
+                        if '\t' + str(dict_before[key]) + ' -> ' + str(n) in self.G.source:
+                            if pre_dict[key] != dict_before[key]:
+                                val = pre_dict[key]
+                                self.print_value(val, over_node=dict_before[key])
+                                new_dict[key] = val
+                                break
             else:
                 phi_node = dict_before[key]
                 val_before_node = self.print_value(pre_dict[key])
@@ -609,7 +632,7 @@ class PyToGraal:
                 node_2 = self.print_value(val_before_node)
                 self.add_edge(node_1, phi_node, label="from " + str(end_loop_node), color="Turquoise")
                 self.add_edge(node_2, phi_node, label="from " + str(before_loop_node), color="Turquoise")
-                self.add_edge(phi_node, loop_begin_node, label="from " + str(end_loop_node))
+                self.add_edge(phi_node, loop_begin_node)
 
                 new_dict[key] = phi_node
         # print("new_dict", new_dict)
@@ -632,3 +655,5 @@ class PyToGraal:
 
     def do_yield(self, cmd, last_control_node):
         raise NotImplementedError
+
+

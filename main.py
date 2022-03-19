@@ -17,8 +17,28 @@ class TestSum(unittest.TestCase):
         p.parse()
         p.print_pdf("mccarthy91")
 
+    def test_for_loop(self):
+        p = PyToGraal(for_loop)
+        p.parse()
+        p.print_pdf("for_loop")
+
+    def test_list_comp(self):
+        p = PyToGraal(list_comp)
+        p.parse()
+        p.print_pdf("list_comp")
+
 
 from PyToGraal import PyToGraal
+
+
+def list_comp(lst):
+    return [x+2 for x in lst]
+
+def for_loop(lst):
+    count = 0
+    for x in lst:
+        count += x
+    return count
 
 
 def mccarthy91(l: float) -> float:
