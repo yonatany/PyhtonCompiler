@@ -154,7 +154,7 @@ class PyToGraal:
         while_cmd = ast.While(test=for_test, body=for_body, orelse=cmd.orelse)
 
         return self.do_while(while_cmd, last_control_node, over_dict)
-
+#
     def do_list_comp(self, cmd, last_control_node):
         # convert list_comp to for:
         # [f(x) for x in lst]
