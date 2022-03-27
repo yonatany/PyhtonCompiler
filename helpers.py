@@ -86,21 +86,3 @@ def type_of_val(value):
         return "str"
     # TODO: add more cases
 
-
-def merge_dict(true_dict, false_dict, true_end_node, false_end_node, merge_node):
-    new_dict = {}
-    for key in true_dict:
-        if key in false_dict:
-            if true_dict[key] == false_dict[key]:
-                new_dict[key] = true_dict[key]
-            else:
-                new_dict[key] = ([(true_dict[key], true_end_node),
-                                  (false_dict[key], false_end_node)], merge_node)
-        else:
-            new_dict[key] = (
-                [(true_dict[key], true_end_node), ("None", false_end_node)], merge_node)
-    for key in false_dict:
-        if key not in new_dict:
-            new_dict[key] = (
-                [(false_dict[key], false_end_node), ("None", true_end_node)], merge_node)
-    return new_dict
