@@ -5,32 +5,6 @@
 import unittest
 
 
-class TestSum(unittest.TestCase):
-
-    def test_quicksort(self):
-        p = PyToGraal(quicksort)
-        p.parse()
-        p.print_pdf("quicksort")
-
-    def test_mccarthy91(self):
-        p = PyToGraal(mccarthy91)
-        p.parse()
-        p.print_pdf("mccarthy91")
-
-    def test_for_loop(self):
-        p = PyToGraal(for_loop)
-        p.parse()
-        p.print_pdf("for_loop")
-
-    def test_list_comp(self):
-        p = PyToGraal(list_comp)
-        p.parse()
-        p.print_pdf("list_comp")
-
-
-from PyToGraal import PyToGraal
-
-
 def list_comp(lst):
     return [x+2 for x in lst]
 
@@ -42,8 +16,8 @@ def for_loop(lst):
 
 
 def mccarthy91(l: float) -> float:
-    n = l
-    c = 1
+    n: float = l
+    c: int = 1
     while c != 0:
         c -= 1
         if n > 100:
