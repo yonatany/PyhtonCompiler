@@ -112,6 +112,7 @@ class PyToGraal:
                 last_control_node = self.__do_call(cmd, last_control_node)
             else:
                 print(cmd)
+                raise NotImplementedError
 
         return last_control_node
 
@@ -145,8 +146,6 @@ class PyToGraal:
             self.__add_edge(loop_end_node, loop_begin_node, color="Red")
         self.__merge_while_dict(table_start_loop, previous_node, loop_end_node, loop_begin_node)
         self.loop_exit.pop()
-        # self.table_stack.pop()
-        # TODO: check this func
         return loop_exit_node
 
     def __do_for(self, cmd: ast.For, last_control_node, over_dict=None):
@@ -523,7 +522,8 @@ class PyToGraal:
             return self.__get_val_and_print(value.value, last_control_node)
         elif isinstance(value, ast.ListComp):
             return self.__do_list_comp(value, last_control_node)
-        # TODO: add more cases
+
+        raise NotImplementedError
 
     def __print_value(self, nd: VarNode, over_node=None) -> VarNode:
         value = nd.name
@@ -633,10 +633,8 @@ class PyToGraal:
             self.__print_condition(test.values[0], comp_node, label="first cond")
             self.__print_condition(test.values[1], comp_node, label="second cond")
 
-        # print(test)
         self.__add_edge(comp_node, if_node, label=label, color="Turquoise")
 
-        # TODO: add more if cases
         return last_control_node
 
     def __make_while_dict(self, over_dict=None):
@@ -675,7 +673,6 @@ class PyToGraal:
                 self.__add_edge(phi_node, loop_begin_node)
 
                 new_dict[key] = VarNode(name=phi_node)
-        # print("new_dict", new_dict)
         self.table_stack.append(new_dict)
 
     def __do_pass(self, cmd, last_control_node):
